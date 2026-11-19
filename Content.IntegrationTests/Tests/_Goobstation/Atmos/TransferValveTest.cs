@@ -14,6 +14,7 @@ using Content.Shared.Containers.ItemSlots;
 using Content.Shared.Damage.Components;
 using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Inventory;
+using Content.Shared.Stacks;
 using Content.Shared.Trigger;
 using Content.Shared.Trigger.Systems;
 using Content.Shared.Verbs;
@@ -176,6 +177,7 @@ public sealed class TransferValveTest : InteractionTest
         await Server.WaitAssertion(() =>
         {
             Assert.That(SEntMan.Deleted(two), "The second tank should have burst");
+            Assert.That(SEntMan.Deleted(valve), "and taken the valve with it");
             // A plain rupture also deletes the tank, so check that the blast actually hit something.
             Assert.That(SEntMan.Deleted(table) || SEntMan.GetComponent<DamageableComponent>(table).TotalDamage > 0,
                 "The table next to it should have been caught in an explosion");
@@ -198,6 +200,41 @@ public sealed class TransferValveTest : InteractionTest
     }
 
     [Test]
+    [TestCase("JetpackBlueFilled", "jetpack")]
+    [TestCase("NitrogenTankFilled", "generic")]
+    public async Task OtherTanksShowTheirKind(string tank, string state)
+    {
+        var coords = SEntMan.GetCoordinates(PlayerCoords);
+        var valve = await SpawnEntity("TransferValve", coords);
+        var item = await SpawnEntity(tank, coords);
+
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(Slots().TryInsert(valve, "tank_one", item, null));
+            Assert.That(SEntMan.System<SharedAppearanceSystem>().TryGetData(valve, TransferValveVisuals.TankOne, out string? shown));
+            Assert.That(shown, Is.EqualTo(state));
+        });
+    }
+
+    [Test]
+    public async Task TimerArmedByHand()
+    {
+        var (valve, _, _) = await SpawnLoadedValve();
+        var timer = await SpawnEntity("TimerTrigger", SEntMan.GetCoordinates(PlayerCoords));
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(Slots().TryInsert(valve, "payloadTrigger", timer, null));
+            Assert.That(SEntMan.System<SharedHandsSystem>().TryPickupAnyHand(SPlayer, valve));
+        });
+
+        await UseInHand();
+        await Server.WaitAssertion(() => Assert.That(Valve(valve).Open, Is.False, "Not until the timer runs out"));
+
+        await RunSeconds(6);
+        await Server.WaitAssertion(() => Assert.That(Valve(valve).Open));
+    }
+
+    [Test]
     public async Task TanksGoInByHand()
     {
         await SpawnTarget("TransferValve");
@@ -206,8 +243,8 @@ public sealed class TransferValveTest : InteractionTest
 
         await Server.WaitAssertion(() =>
         {
-            Assert.That(Slots().GetItemOrNull(STarget!.Value, "tank_one"), Is.Not.Null);
-            Assert.That(Slots().GetItemOrNull(STarget!.Value, "tank_two"), Is.Not.Null);
+            Assert.That(Prototype(Slots().GetItemOrNull(STarget!.Value, "tank_one")), Is.EqualTo("PlasmaTankFilled"));
+            Assert.That(Prototype(Slots().GetItemOrNull(STarget!.Value, "tank_two")), Is.EqualTo("OxygenTankFilled"));
         });
     }
 
@@ -229,12 +266,14 @@ public sealed class TransferValveTest : InteractionTest
     public async Task CableStraps()
     {
         await SpawnTarget("TransferValve");
-        await InteractUsing("CableApcStack1", 15);
+        var cable = await PlaceInHands("CableApcStack1", 20);
+        await Interact();
 
         await Server.WaitAssertion(() =>
         {
             Assert.That(Valve(STarget!.Value).Wired);
             Assert.That(SEntMan.GetComponent<ClothingComponent>(STarget!.Value).Slots, Is.EqualTo(SlotFlags.BACK));
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(cable)).Count, Is.EqualTo(5), "Fifteen lengths used");
         });
 
         await InteractUsing("Wirecutter");
@@ -242,6 +281,22 @@ public sealed class TransferValveTest : InteractionTest
         {
             Assert.That(Valve(STarget!.Value).Wired, Is.False);
             Assert.That(SEntMan.GetComponent<ClothingComponent>(STarget!.Value).Slots, Is.EqualTo(SlotFlags.NONE));
+            var cableBack = SEntMan.System<EntityLookupSystem>().GetEntitiesInRange<StackComponent>(SEntMan.GetCoordinates(TargetCoords), 0.5f);
+            Assert.That(cableBack.Any(s => s.Comp.StackTypeId == "Cable" && s.Comp.Count == 15), "Cutting gives the cable back");
+        });
+    }
+
+    [Test]
+    public async Task NotEnoughCable()
+    {
+        await SpawnTarget("TransferValve");
+        var cable = await PlaceInHands("CableApcStack1", 10);
+        await Interact();
+
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(Valve(STarget!.Value).Wired, Is.False);
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(cable)).Count, Is.EqualTo(10));
         });
     }
 
@@ -277,6 +332,8 @@ public sealed class TransferValveTest : InteractionTest
         });
         return (valve, one, two);
     }
+
+    private string? Prototype(EntityUid? uid) => uid == null ? null : SEntMan.GetComponent<MetaDataComponent>(uid.Value).EntityPrototype?.ID;
 
     private void Trigger(EntityUid valve)
     {
