@@ -31,6 +31,8 @@
     quickEquip: false
     slots: NONE
   - type: TransferValve
+    valveSound:
+      path: /Audio/_Goobstation/Effects/valve_opening.ogg
     tankStates:
       OxygenTank: oxygen
       EmergencyOxygenTank: emergency
