@@ -7,8 +7,20 @@ namespace Content.Goobstation.Shared.Atmos;
 [Serializable, NetSerializable]
 public enum TransferValveVisuals : byte
 {
+    /// <summary>
+    /// Sprite state of the first tank, or empty when there isn't one.
+    /// </summary>
     TankOne,
     TankTwo,
     Device,
-    Empty,
+    Wired,
+}
+
+public enum TransferValveVisualLayers : byte
+{
+    Base,
+    TankOne,
+    TankTwo,
+    Device,
+    Cables,
 }
