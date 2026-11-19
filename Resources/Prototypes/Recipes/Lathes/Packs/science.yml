@@ -65,6 +65,7 @@
   #- TimerTrigger # Goobstation roundstart
   #- SignalTrigger
   #- VoiceTrigger
+  - TransferValve # Goob
 
 - type: latheRecipePack
   id: ScienceBoards
