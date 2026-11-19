@@ -25,14 +25,14 @@
       map: [ "enum.TransferValveVisualLayers.Device" ]
       visible: false
   - type: Item
-    size: Large
+    size: Ginormous
   - type: Clothing
     sprite: _Goobstation/Objects/Devices/transfer_valve.rsi
     quickEquip: false
     slots: NONE
   - type: TransferValve
     valveSound:
-      path: /Audio/_Goobstation/Effects/valve_opening.ogg
+      path: /Audio/_Goobstation/Effects/TransferValve/valve_opening.ogg
     tankStates:
       OxygenTank: oxygen
       EmergencyOxygenTank: emergency
@@ -43,6 +43,9 @@
       DoubleEmergencyNitrogenTank: generic
       NitrousOxideTank: anesthetic
       PlasmaTank: plasma
+      EmergencyPlasmaTank: plasmaman_tank_belt
+      ExtendedEmergencyPlasmaTank: plasmaman_tank_belt
+      DoubleEmergencyPlasmaTank: plasmaman_tank
       JetpackBlue: jetpack
       JetpackBlack: jetpack-black
       JetpackCaptain: jetpack-captain
@@ -50,6 +53,7 @@
       JetpackSecurity: jetpack-sec
       JetpackVoid: jetpack-void
   - type: PayloadCase
+    examinePayload: false
   - type: ItemSlots
     slots:
       tank_one:

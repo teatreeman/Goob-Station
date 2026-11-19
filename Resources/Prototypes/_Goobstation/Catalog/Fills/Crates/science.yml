@@ -23,3 +23,16 @@
       amount: 1
     - id: ResearchComputerFlatpack
       amount: 3
+
+- type: entity
+  id: CrateScienceTransferValves
+  parent: CrateScienceSecure
+  name: tank transfer valves crate
+  description: Two tank transfer valves. Requires Research Director access to open.
+  components:
+  - type: AccessReader
+    access: [["ResearchDirector"]]
+  - type: StorageFill
+    contents:
+    - id: TransferValve
+      amount: 2

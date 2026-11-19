@@ -188,6 +188,7 @@
     - ScienceBoardsStatic
     - ScienceExplosives # Goobstation - Roundstart Grenade Tech
     - GrenadeTriggersStatic # Goobstation - Roundstart Grenade Tech
+    - ScienceToxinsStatic
     - MiscSignallersStatic
     dynamicPacks:
     - AdvancedTools

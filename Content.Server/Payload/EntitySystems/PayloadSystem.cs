@@ -139,6 +139,11 @@ public sealed class PayloadSystem : EntitySystem
 
     private void OnExamined(EntityUid uid, PayloadCaseComponent component, ExaminedEvent args)
     {
+        // Goob start - cases that only hold a trigger have no payload to report
+        if (!component.ExaminePayload)
+            return;
+        // Goob end
+
         using (args.PushGroup(nameof(PayloadCaseComponent)))
         {
             if (!args.IsInDetailsRange)

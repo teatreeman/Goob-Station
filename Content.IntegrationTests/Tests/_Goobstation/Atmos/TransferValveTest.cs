@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #nullable enable
+using System.Linq;
 using System.Threading.Tasks;
 using Content.Goobstation.Server.Atmos.EntitySystems;
 using Content.Goobstation.Shared.Atmos;
@@ -10,11 +11,15 @@ using Content.Shared.Atmos;
 using Content.Shared.Atmos.Components;
 using Content.Shared.Clothing.Components;
 using Content.Shared.Containers.ItemSlots;
+using Content.Shared.Damage.Components;
+using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Inventory;
 using Content.Shared.Trigger;
 using Content.Shared.Trigger.Systems;
+using Content.Shared.Verbs;
 using NUnit.Framework;
 using Robust.Shared.GameObjects;
+using Robust.Shared.Localization;
 
 namespace Content.IntegrationTests.Tests._Goobstation.Atmos;
 
@@ -39,8 +44,62 @@ public sealed class TransferValveTest : InteractionTest
             Assert.That(Air(two).Volume, Is.EqualTo(volumeOne + volumeTwo).Within(0.01f));
 
             Assert.That(system.SetOpen(valve, false));
+            var share = volumeOne / (volumeOne + volumeTwo);
+            Assert.That(Air(one).TotalMoles, Is.EqualTo(total * share).Within(total * 0.01f));
+            Assert.That(Air(two).TotalMoles, Is.EqualTo(total * (1 - share)).Within(total * 0.01f));
+            Assert.That(Air(two).Volume, Is.EqualTo(volumeTwo).Within(0.01f));
+        });
+    }
+
+    [Test]
+    public async Task EjectingATankSplitsTheGas()
+    {
+        var (valve, one, two) = await SpawnLoadedValve();
+
+        await Server.WaitAssertion(() =>
+        {
+            var total = Air(one).TotalMoles + Air(two).TotalMoles;
+            var volumeTwo = Air(two).Volume;
+            Assert.That(SEntMan.System<TransferValveSystem>().SetOpen(valve, true));
+
+            Assert.That(Slots().TryEject(valve, "tank_one", null, out _));
+            Assert.That(Valve(valve).Open, Is.False);
+            Assert.That(Air(one).TotalMoles + Air(two).TotalMoles, Is.EqualTo(total).Within(total * 0.01f));
             Assert.That(Air(one).TotalMoles, Is.GreaterThan(0f));
             Assert.That(Air(two).Volume, Is.EqualTo(volumeTwo).Within(0.01f));
+        });
+    }
+
+    [Test]
+    public async Task LookingAtTheMenuLeavesItOpen()
+    {
+        var (valve, _, _) = await SpawnLoadedValve();
+
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.System<TransferValveSystem>().SetOpen(valve, true));
+            SEntMan.System<SharedVerbSystem>().GetLocalVerbs(valve, SPlayer, typeof(AlternativeVerb));
+            SEntMan.System<SharedVerbSystem>().GetLocalVerbs(valve, SPlayer, typeof(Verb));
+            Assert.That(Valve(valve).Open, "Opening the context menu shouldn't touch the valve");
+        });
+    }
+
+    [Test]
+    public async Task OnlyWorkedWhileHeld()
+    {
+        var (valve, _, _) = await SpawnLoadedValve();
+
+        await Server.WaitAssertion(() =>
+        {
+            var verbs = SEntMan.System<SharedVerbSystem>().GetLocalVerbs(valve, SPlayer, typeof(Verb));
+            Assert.That(verbs.Any(v => v.Text == Loc.GetString("transfer-valve-verb-open")), Is.False, "Not from the floor");
+        });
+
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.System<SharedHandsSystem>().TryPickupAnyHand(SPlayer, valve));
+            var verbs = SEntMan.System<SharedVerbSystem>().GetLocalVerbs(valve, SPlayer, typeof(Verb));
+            Assert.That(verbs.Any(v => v.Text == Loc.GetString("transfer-valve-verb-open")), "Held, it can be opened");
         });
     }
 
@@ -102,6 +161,7 @@ public sealed class TransferValveTest : InteractionTest
     public async Task HotMixExplodes()
     {
         var (valve, one, two) = await SpawnLoadedValve();
+        var table = await SpawnEntity("TableWood", SEntMan.GetCoordinates(PlayerCoords).Offset(new System.Numerics.Vector2(1, 0)));
 
         await Server.WaitAssertion(() =>
         {
@@ -113,7 +173,13 @@ public sealed class TransferValveTest : InteractionTest
         });
 
         await RunSeconds(6);
-        await Server.WaitAssertion(() => Assert.That(SEntMan.Deleted(two), "The second tank should have burst"));
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.Deleted(two), "The second tank should have burst");
+            // A plain rupture also deletes the tank, so check that the blast actually hit something.
+            Assert.That(SEntMan.Deleted(table) || SEntMan.GetComponent<DamageableComponent>(table).TotalDamage > 0,
+                "The table next to it should have been caught in an explosion");
+        });
     }
 
     [Test]
@@ -142,19 +208,6 @@ public sealed class TransferValveTest : InteractionTest
         {
             Assert.That(Slots().GetItemOrNull(STarget!.Value, "tank_one"), Is.Not.Null);
             Assert.That(Slots().GetItemOrNull(STarget!.Value, "tank_two"), Is.Not.Null);
-        });
-    }
-
-    [Test]
-    public async Task ValveGoesOntoATank()
-    {
-        await SpawnTarget("OxygenTankFilled");
-        var valve = await PlaceInHands("TransferValve");
-        await Interact();
-
-        await Server.WaitAssertion(() =>
-        {
-            Assert.That(Slots().GetItemOrNull(SEntMan.GetEntity(valve), "tank_one"), Is.EqualTo(STarget));
         });
     }
 
@@ -193,19 +246,21 @@ public sealed class TransferValveTest : InteractionTest
     }
 
     [Test]
-    public async Task DeletedTankClosesIt()
+    public async Task BurstTankClosesIt()
     {
         var (valve, one, two) = await SpawnLoadedValve();
         var system = SEntMan.System<TransferValveSystem>();
 
         await Server.WaitAssertion(() =>
         {
-            var volumeTwo = Air(two).Volume;
             Assert.That(system.SetOpen(valve, true));
+            var moles = Air(two).TotalMoles;
+            var volume = Air(two).Volume;
 
             SEntMan.DeleteEntity(one);
             Assert.That(Valve(valve).Open, Is.False);
-            Assert.That(Air(two).Volume, Is.EqualTo(volumeTwo).Within(0.01f));
+            Assert.That(Air(two).TotalMoles, Is.EqualTo(moles).Within(0.01f), "The other tank keeps its gas");
+            Assert.That(Air(two).Volume, Is.EqualTo(volume).Within(0.01f), "and its pressure doesn't jump");
         });
     }
 

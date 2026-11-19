@@ -29,3 +29,13 @@
   cost: 10000
   category: cargoproduct-category-name-science
   group: market
+
+- type: cargoProduct
+  id: ScienceTransferValves
+  icon:
+    sprite: _Goobstation/Objects/Devices/transfer_valve.rsi
+    state: icon
+  product: CrateScienceTransferValves
+  cost: 2400
+  category: cargoproduct-category-name-science
+  group: market
